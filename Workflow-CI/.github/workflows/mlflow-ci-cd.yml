@@ -1,0 +1,66 @@
+name: MLflow CI/CD Pipeline - Advanced
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Memungkinkan pemicuan manual dari tab GitHub Actions
+
+jobs:
+  train-and-package:
+    runs-on: ubuntu-latest
+    env:
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }} # Misal, URI DagsHub Anda
+
+    steps:
+      # 1. Checkout kode
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Setup Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: |
+          pip install mlflow scikit-learn pandas
+
+      # 4. Jalankan MLflow Project untuk training[citation:9]
+      - name: Run MLflow Project
+        run: |
+          cd MLProject
+          mlflow run . --experiment-name="GitHub_Actions_Training"
+
+      # 5. (Skilled/Advanced) Simpan Artefak ke GitHub
+      - name: Upload MLflow artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: mlflow-run-artifacts
+          path: mlruns/ # Path relatif tempat MLflow menyimpan run lokal
+          retention-days: 7
+
+      # 6. (Advanced) Build & Push Docker Image ke Docker Hub[citation:7]
+      - name: Build Docker Image with MLflow
+        id: build-docker
+        run: |
+          # Asumsikan run_id dari langkah sebelumnya tersimpan
+          # Untuk contoh, kita gunakan run ID terbaru
+          RUN_ID=$(mlflow runs search --experiment-names "GitHub_Actions_Training" --max-results 1 | grep -o 'run_id:"[^"]*"' | cut -d'"' -f2)
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+          echo "Building Docker image for run: $RUN_ID"
+          mlflow models build-docker -m "runs:/$RUN_ID/model" -n "diabetes-model:${{ github.sha }}" --enable-mlserver
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Tag and push Docker image
+        run: |
+          docker tag diabetes-model:${{ github.sha }} ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:latest
+          docker tag diabetes-model:${{ github.sha }} ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:latest
+          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:${{ github.sha }}

@@ -1,0 +1,36 @@
+DAGSHUB REPOSITORY LINKS - DIABETES MLOPS PROJECT
+==================================================
+
+## MAIN REPOSITORY:
+https://dagshub.com/ilsbuat3-pixel/diabetes-mlops
+
+## MLFLOW EXPERIMENTS:
+https://dagshub.com/ilsbuat3-pixel/diabetes-mlops/experiments
+
+## SPECIFIC RUN DETAILS (Advanced Tuning):
+https://dagshub.com/ilsbuat3-pixel/diabetes-mlops/experiments#/experiment/m_cb563d9e1c52481d862d9c4ad8475d18
+
+
+## CREDENTIALS FOR ACCESS:
+- Repository Owner: ilsbuat3-pixel
+- Repository Name: diabetes-mlops
+- Public Access: Yes (viewable without login)
+
+## VERIFICATION:
+1. Open https://dagshub.com/ilsbuat3-pixel/diabetes-mlops
+2. Click "Experiments" tab
+3. View experiment "Diabetes_Advanced_DagsHub"
+4. Click on latest run to see parameters, metrics, and artifacts
+
+## SCREENSHOTS AS PROOF:
+See attached screenshots:
+- 06_dagshub_experiments.jpeg (Experiments list)
+- 07_dagshub_run_details.jpeg (Run details)
+- 10_dagshub_artifacts.jpeg (Artifacts in DagsHub)
+
+## IMPLEMENTATION DETAILS:
+- MLflow Tracking URI: https://dagshub.com/ilsbuat3-pixel/diabetes-mlops.mlflow
+- Experiment: Diabetes_Advanced_DagsHub
+- Run: dagshub_[timestamp] or advanced_tuning_[timestamp]
+- Artifacts successfully pushed to DagsHub
+- Accessible online from anywhere
