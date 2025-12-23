@@ -1,11 +1,10 @@
+# .github/workflows/preprocess.yml - UPDATE VERSION
 name: Data Preprocessing Pipeline
 
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv'
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   preprocess:
@@ -14,9 +13,18 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
       
+    - name: Debug - Show Repository Structure
+      run: |
+        echo "=== CURRENT DIRECTORY ==="
+        pwd
+        echo -e "\n=== ALL FILES ==="
+        find . -type f | head -30
+        echo -e "\n=== diabetes_prediction_dataset_raw FOLDER ==="
+        ls -la diabetes_prediction_dataset_raw/ 2>/dev/null || echo "Folder not found!"
+        echo -e "\n=== preprocessing FOLDER ==="
+        ls -la preprocessing/
+        
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -24,28 +32,37 @@ jobs:
         
     - name: Install Dependencies
       run: |
-        pip install pandas==2.1.4
-        pip install numpy==1.26.0
-        pip install scipy==1.11.4
-        pip install scikit-learn==1.4.0
+        pip install pandas numpy scipy scikit-learn
         
-    - name: Run Preprocessing Script
+    - name: Run Preprocessing
       run: |
+        echo "=== RUNNING PREPROCESSING ==="
+        echo "Current directory: $(pwd)"
+        echo "Input file path: diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv"
+        
+        # Cek file exists
+        if [ -f "diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv" ]; then
+          echo "✓ Input file found!"
+          echo "File size: $(wc -l < diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv) lines"
+        else
+          echo "✗ ERROR: Input file NOT found!"
+          echo "Listing diabetes_prediction_dataset_raw folder:"
+          ls -la diabetes_prediction_dataset_raw/ 2>/dev/null || echo "Folder doesn't exist"
+          exit 1
+        fi
+        
         python preprocessing/automate_RiaDwiRatna.py \
           --input diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv \
           --output preprocessing/diabetes_preprocessed_full.csv
           
-    - name: Check Processed File
+    - name: Display Results
       run: |
-        echo "=== Processed File Information ==="
-        ls -la preprocessing/diabetes_preprocessed_full.csv
-        echo -e "\n=== First 3 rows ==="
-        head -n 3 preprocessing/diabetes_preprocessed_full.csv | cut -d',' -f1-5
-        
-    - name: Commit and Push Processed Data
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add preprocessing/diabetes_preprocessed_full.csv
-        git diff --cached --quiet || git commit -m "Auto: Update preprocessed dataset [$(date +'%Y-%m-%d %H:%M:%S')]"
-        git push
+        echo "=== RESULTS ==="
+        if [ -f "preprocessing/diabetes_preprocessed_full.csv" ]; then
+          echo "✓ Output file created successfully!"
+          echo "File size: $(wc -l < preprocessing/diabetes_preprocessed_full.csv) lines"
+          echo "First 2 rows:"
+          head -n 2 preprocessing/diabetes_preprocessed_full.csv | cut -d',' -f1-5
+        else
+          echo "✗ ERROR: Output file not created!"
+        fi
