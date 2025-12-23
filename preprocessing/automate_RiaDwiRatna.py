@@ -90,7 +90,9 @@ def encode_categorical(df):
     df['smoking_encoded'] = df['smoking_history'].map(smoking_map)
     
     # One-hot encoding untuk age_category dan bmi_category
-    df = pd.get_dummies(df, columns=['age_category', 'bmi_category'], dtype=int)
+    df = pd.get_dummies(df, columns=['age_category', 'bmi_category'], 
+                      drop_first=True, dtype=int)
+
     
     print("Encoded categorical variables")
     return df
