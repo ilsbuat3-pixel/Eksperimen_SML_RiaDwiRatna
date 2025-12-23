@@ -171,7 +171,16 @@ def main():
             print(f"🔗 Tracking Server: {tracking_uri}")
         
         # Return success
-        return 0
+        run_id = mlflow.active_run().info.run_id
+        print(f"🏷️  Run ID for Docker build: {run_id}")
+
+        # Simpan run_id ke file untuk step berikutnya
+        with open('run_id.txt', 'w') as f:
+            f.write(run_id)
+
+            return 0
 
 if __name__ == "__main__":
     main()
+    
+    

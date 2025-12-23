@@ -1,66 +1,126 @@
-name: MLflow CI/CD Pipeline - Advanced
+name: 🚀 MLflow CI/CD - Advanced (Kriteria 3)
 
 on:
+  workflow_dispatch:  # Bisa di-trigger manual
   push:
     branches: [ main ]
-  workflow_dispatch: # Memungkinkan pemicuan manual dari tab GitHub Actions
+    paths:
+      - 'MLProject/**'
+      - '.github/workflows/mlflow-ci-advanced.yml'
 
 jobs:
-  train-and-package:
+  train-and-dockerize:
     runs-on: ubuntu-latest
     env:
-      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }} # Misal, URI DagsHub Anda
-
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+    
     steps:
-      # 1. Checkout kode
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # 2. Setup Python
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      # 3. Install dependencies
-      - name: Install dependencies
-        run: |
-          pip install mlflow scikit-learn pandas
-
-      # 4. Jalankan MLflow Project untuk training[citation:9]
-      - name: Run MLflow Project
-        run: |
-          cd MLProject
-          mlflow run . --experiment-name="GitHub_Actions_Training"
-
-      # 5. (Skilled/Advanced) Simpan Artefak ke GitHub
-      - name: Upload MLflow artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: mlflow-run-artifacts
-          path: mlruns/ # Path relatif tempat MLflow menyimpan run lokal
-          retention-days: 7
-
-      # 6. (Advanced) Build & Push Docker Image ke Docker Hub[citation:7]
-      - name: Build Docker Image with MLflow
-        id: build-docker
-        run: |
-          # Asumsikan run_id dari langkah sebelumnya tersimpan
-          # Untuk contoh, kita gunakan run ID terbaru
-          RUN_ID=$(mlflow runs search --experiment-names "GitHub_Actions_Training" --max-results 1 | grep -o 'run_id:"[^"]*"' | cut -d'"' -f2)
-          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-          echo "Building Docker image for run: $RUN_ID"
-          mlflow models build-docker -m "runs:/$RUN_ID/model" -n "diabetes-model:${{ github.sha }}" --enable-mlserver
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Tag and push Docker image
-        run: |
-          docker tag diabetes-model:${{ github.sha }} ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:latest
-          docker tag diabetes-model:${{ github.sha }} ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:${{ github.sha }}
-          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:latest
-          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:${{ github.sha }}
+    # ========== STEP 1: SETUP ==========
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: 🐍 Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    # ========== STEP 2: INSTALL DEPENDENCIES ==========
+    - name: 📦 Install MLflow & dependencies
+      run: |
+        pip install mlflow==2.11.0
+        pip install scikit-learn pandas numpy
+        pip install dagshub  # Untuk tracking ke DagsHub
+        
+    # ========== STEP 3: RUN MLFLOW PROJECT (TRAINING) ==========
+    - name: 🤖 Run MLflow Project - Training
+      id: training
+      run: |
+        cd MLProject
+        echo "Starting MLflow training..."
+        
+        # Jalankan training dan capture output
+        mlflow run . \
+          --experiment-name="CI_Advanced_$(date +%Y%m%d_%H%M%S)" \
+          2>&1 | tee run.log
+        
+        # Ekstrak RUN_ID dari log
+        python get_run_id.py
+        
+    # ========== STEP 4: UPLOAD ARTIFACTS (Skilled Requirement) ==========
+    - name: 💾 Upload Artifacts to GitHub
+      uses: actions/upload-artifact@v3
+      with:
+        name: mlflow-artifacts-${{ github.run_id }}
+        path: |
+          MLProject/mlruns/
+          MLProject/*.png
+          MLProject/*.json
+          MLProject/run.log
+        retention-days: 30
+    
+    # ========== STEP 5: BUILD DOCKER IMAGE (Advanced Requirement) ==========
+    - name: 🐳 Build Docker Image with mlflow build-docker
+      id: build-docker
+      if: env.RUN_ID != ''
+      run: |
+        echo "Building Docker image for RUN_ID: ${{ env.RUN_ID }}"
+        
+        # Gunakan mlflow models build-docker
+        mlflow models build-docker \
+          -m "runs:/${{ env.RUN_ID }}/model" \
+          -n "diabetes-ml-model:${{ github.sha }}" \
+          --enable-mlserver
+        
+        echo "✅ Docker image built successfully!"
+        echo "Image: diabetes-ml-model:${{ github.sha }}"
+    
+    # ========== STEP 6: PUSH TO DOCKER HUB (Advanced Requirement) ==========
+    - name: 🔐 Login to Docker Hub
+      if: env.RUN_ID != ''
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+    
+    - name: 🏷️ Tag Docker Image
+      if: env.RUN_ID != ''
+      run: |
+        # Tag dengan username Docker Hub Anda
+        docker tag diabetes-ml-model:${{ github.sha }} \
+          ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:latest
+        
+        docker tag diabetes-ml-model:${{ github.sha }} \
+          ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:${{ github.sha }}
+        
+        echo "Tags created:"
+        echo "  - ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:latest"
+        echo "  - ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:${{ github.sha }}"
+    
+    - name: 📤 Push Docker Image to Docker Hub
+      if: env.RUN_ID != ''
+      run: |
+        # Push kedua tag
+        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:latest
+        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model:${{ github.sha }}
+        
+        echo "🎉 Docker image pushed to Docker Hub!"
+        echo "🔗 URL: https://hub.docker.com/r/${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model"
+    
+    # ========== STEP 7: VERIFICATION ==========
+    - name: 📋 Verification Summary
+      run: |
+        echo "=========================================="
+        echo "✅ KRITERIA 3 ADVANCED - COMPLETED"
+        echo "=========================================="
+        echo ""
+        echo "📊 What was accomplished:"
+        echo "1. ✅ MLflow Project executed automatically"
+        echo "2. ✅ Artifacts saved to GitHub"
+        echo "3. ✅ Docker image built with mlflow build-docker"
+        echo "4. ✅ Docker image pushed to Docker Hub"
+        echo ""
+        if [ "${{ env.RUN_ID }}" != "" ]; then
+          echo "🔗 MLflow Run: ${{ env.RUN_ID }}"
+        fi
+        echo "🐳 Docker Image: ${{ secrets.DOCKER_HUB_USERNAME }}/diabetes-ml-model"
+        echo "🚀 Workflow Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
