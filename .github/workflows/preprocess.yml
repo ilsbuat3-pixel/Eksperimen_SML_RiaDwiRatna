@@ -1,0 +1,51 @@
+name: Data Preprocessing Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv'
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  preprocess:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install Dependencies
+      run: |
+        pip install pandas==2.1.4
+        pip install numpy==1.26.0
+        pip install scipy==1.11.4
+        pip install scikit-learn==1.4.0
+        
+    - name: Run Preprocessing Script
+      run: |
+        python preprocessing/automate_RiaDwiRatna.py \
+          --input diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv \
+          --output preprocessing/diabetes_preprocessed_full.csv
+          
+    - name: Check Processed File
+      run: |
+        echo "=== Processed File Information ==="
+        ls -la preprocessing/diabetes_preprocessed_full.csv
+        echo -e "\n=== First 3 rows ==="
+        head -n 3 preprocessing/diabetes_preprocessed_full.csv | cut -d',' -f1-5
+        
+    - name: Commit and Push Processed Data
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add preprocessing/diabetes_preprocessed_full.csv
+        git diff --cached --quiet || git commit -m "Auto: Update preprocessed dataset [$(date +'%Y-%m-%d %H:%M:%S')]"
+        git push
