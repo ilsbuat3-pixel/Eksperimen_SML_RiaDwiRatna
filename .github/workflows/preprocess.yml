@@ -21,7 +21,7 @@ jobs:
         echo -e "\n=== ALL FILES ==="
         find . -type f | head -30
         echo -e "\n=== Diabetes_prediction_dataset_raw FOLDER ==="
-        ls -la diabetes_prediction_dataset_raw/ 2>/dev/null || echo "Folder not found!"
+        ls -la Diabetes_prediction_dataset_raw/ 2>/dev/null || echo "Folder not found!"
         echo -e "\n=== preprocessing FOLDER ==="
         ls -la preprocessing/
         
@@ -38,21 +38,21 @@ jobs:
       run: |
         echo "=== RUNNING PREPROCESSING ==="
         echo "Current directory: $(pwd)"
-        echo "Input file path: diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv"
+        echo "Input file path: Diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv"
         
         # Cek file exists
-        if [ -f "diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv" ]; then
+        if [ -f "Diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv" ]; then
           echo "✓ Input file found!"
-          echo "File size: $(wc -l < diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv) lines"
+          echo "File size: $(wc -l < Diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv) lines"
         else
           echo "✗ ERROR: Input file NOT found!"
           echo "Listing Diabetes_prediction_dataset_raw folder:"
-          ls -la diabetes_prediction_dataset_raw/ 2>/dev/null || echo "Folder doesn't exist"
+          ls -la Diabetes_prediction_dataset_raw/ 2>/dev/null || echo "Folder doesn't exist"
           exit 1
         fi
         
         python preprocessing/automate_RiaDwiRatna.py \
-          --input diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv \
+          --input Diabetes_prediction_dataset_raw/diabetes_prediction_dataset.csv \
           --output preprocessing/diabetes_preprocessed_full.csv
           
     - name: Display Results
