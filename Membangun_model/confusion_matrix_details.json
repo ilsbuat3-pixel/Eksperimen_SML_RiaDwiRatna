@@ -1,8 +1,0 @@
-{
-  "true_negatives": 16341,
-  "false_positives": 1193,
-  "false_negatives": 368,
-  "true_positives": 1328,
-  "sensitivity": 0.7830188679245284,
-  "specificity": 0.9319607619482149
-}
