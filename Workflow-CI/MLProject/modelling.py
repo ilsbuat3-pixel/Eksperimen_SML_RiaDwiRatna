@@ -1,4 +1,3 @@
-# MLProject/modelling.py - Script yang disesuaikan untuk MLflow Project
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV
@@ -27,18 +26,11 @@ def main():
     # 1. Parse arguments from MLflow run
     args = parse_args()
     
-    # 2. Setup MLflow tracking - SANGAT PENTING untuk CI/CD
-    #    MLFLOW_TRACKING_URI akan diset oleh GitHub Actions secret
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-    if tracking_uri:
-        mlflow.set_tracking_uri(tracking_uri)
-        print(f"📡 MLflow Tracking URI set to: {tracking_uri}")
+    # 2. SANGAT PENTING: JANGAN pakai set_experiment() sama sekali!
+    # Biarkan MLflow run command yang handle experiment
     
-    # Gunakan experiment name yang konsisten untuk CI
-    mlflow.set_experiment("Diabetes_CI_Pipeline")
-    
-    # 3. Start MLflow run
-    with mlflow.start_run(run_name="ci_training_run"):
+    # 3. Start MLflow run - Biarkan kosong, MLflow akan handle
+    with mlflow.start_run():
         print("="*70)
         print("MLFLOW PROJECT TRAINING - CI/CD PIPELINE")
         print("="*70)
@@ -50,7 +42,7 @@ def main():
         print(f"\n📂 Loading data from: {args.data_path}")
         df = pd.read_csv(args.data_path)
         
-        # Fix one-hot encoding redundancy (sama seperti sebelumnya)
+        # Fix one-hot encoding redundancy
         cols_to_drop = []
         if 'age_category_Young' in df.columns:
             cols_to_drop.append('age_category_Young')
@@ -75,6 +67,7 @@ def main():
         print(f"Test set:  {X_test.shape}, Positive: {y_test.sum():,}")
         
         # 6. Hyperparameter tuning (GridSearchCV)
+        print("\n🔍 Performing GridSearchCV...")
         param_grid = {
             'n_estimators': [100, 150],
             'max_depth': [10, 15, None],
@@ -82,7 +75,6 @@ def main():
             'class_weight': ['balanced', {0: 1, 1: 3}]
         }
         
-        print("\n🔍 Performing GridSearchCV...")
         grid_search = GridSearchCV(
             RandomForestClassifier(random_state=args.random_state, n_jobs=-1),
             param_grid,
@@ -109,7 +101,7 @@ def main():
             'best_cv_score': grid_search.best_score_
         }
         
-        # 8. Manual Logging (Kunci Kriteria 2 & 3)
+        # 8. Manual Logging
         # Log parameters
         mlflow.log_params(grid_search.best_params_)
         mlflow.log_param('test_size', args.test_size)
@@ -126,61 +118,32 @@ def main():
         mlflow.log_metric("train_positive", y_train.sum())
         mlflow.log_metric("test_positive", y_test.sum())
         
-        # 9. Log model - METODE YANG PALING KOMPATIBEL
-        # Menggunakan log_artifact untuk kompatibilitas maksimal dengan DagsHub[citation:6]
+        # 9. Log model - Cara paling sederhana
         import pickle
         model_path = 'best_model.pkl'
         with open(model_path, 'wb') as f:
             pickle.dump(best_model, f)
         mlflow.log_artifact(model_path, artifact_path="model")
         
-        # Alternatif: Log dengan log_model jika registry didukung
-        # mlflow.sklearn.log_model(best_model, "model")
+        # Juga log dengan sklearn untuk compatibility
+        mlflow.sklearn.log_model(best_model, "sklearn_model")
         
-        # 10. Log essential artifacts untuk CI (opsional, sederhana)
-        # Confusion matrix as JSON
-        cm = confusion_matrix(y_test, y_pred)
-        tn, fp, fn, tp = cm.ravel()
-        cm_data = {
-            'true_negatives': int(tn),
-            'false_positives': int(fp),
-            'false_negatives': int(fn),
-            'true_positives': int(tp)
-        }
-        with open('confusion_matrix.json', 'w') as f:
-            json.dump(cm_data, f)
-        mlflow.log_artifact('confusion_matrix.json')
+        # 10. Save run_id untuk Docker build
+        run_id = mlflow.active_run().info.run_id
+        print(f"\n🏷️  Run ID: {run_id}")
         
-        # Classification report
-        report = classification_report(y_test, y_pred, output_dict=True)
-        with open('classification_report.json', 'w') as f:
-            json.dump(report, f, indent=2)
-        mlflow.log_artifact('classification_report.json')
+        # Save run_id to file
+        with open('run_id.txt', 'w') as f:
+            f.write(run_id)
         
-        # 11. Print results
         print("\n" + "="*70)
-        print("TRAINING COMPLETED SUCCESSFULLY")
+        print("✅ TRAINING COMPLETED SUCCESSFULLY")
         print("="*70)
         print(f"\n📊 Best Parameters: {grid_search.best_params_}")
-        print(f"📈 Test Metrics:")
         for metric_name, metric_value in metrics.items():
             print(f"  {metric_name}: {metric_value:.4f}")
         
-        print(f"\n✅ Model and artifacts logged to MLflow.")
-        if tracking_uri:
-            print(f"🔗 Tracking Server: {tracking_uri}")
-        
-        # Return success
-        run_id = mlflow.active_run().info.run_id
-        print(f"🏷️  Run ID for Docker build: {run_id}")
-
-        # Simpan run_id ke file untuk step berikutnya
-        with open('run_id.txt', 'w') as f:
-            f.write(run_id)
-
-            return 0
+        return 0
 
 if __name__ == "__main__":
     main()
-    
-    

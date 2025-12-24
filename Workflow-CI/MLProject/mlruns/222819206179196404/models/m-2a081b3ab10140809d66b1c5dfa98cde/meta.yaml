@@ -1,0 +1,10 @@
+artifact_location: file:///C:/Users/ASUS/OneDrive/Documents/Eksperimen_SML_RiaDwiRatna/Workflow-CI/MLProject/mlruns/222819206179196404/models/m-2a081b3ab10140809d66b1c5dfa98cde/artifacts
+creation_timestamp: 1766555298947
+experiment_id: '222819206179196404'
+last_updated_timestamp: 1766555303939
+model_id: m-2a081b3ab10140809d66b1c5dfa98cde
+model_type: null
+name: sklearn_model
+source_run_id: 854758fb1b84453ea1d3281434c0c67c
+status: 2
+status_message: null
