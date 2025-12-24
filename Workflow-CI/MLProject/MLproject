@@ -1,9 +1,10 @@
-name: diabetes-mlflow-project
-conda_env: conda.yaml
+name: mlflow-ci-cd-project
+python_env: conda.yaml
+
 entry_points:
   main:
     parameters:
-      data_file: {type: str, default: "diabetes_preprocessed_full.csv"}
+      data_path: {type: str, default: "diabetes_preprocessed_full.csv"}
       test_size: {type: float, default: 0.2}
       random_state: {type: int, default: 42}
-    command: "python modelling.py --data_file={data_file} --test_size={test_size} --random_state={random_state}"
+    command: "python modelling.py --data-path={data_path} --test-size={test_size} --random-state={random_state}"
