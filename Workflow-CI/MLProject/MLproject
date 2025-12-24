@@ -1,4 +1,4 @@
-name: diabetes-classifier-ci
+name:  mlflow-ci-cd-project
 python_env: conda.yaml
 
 entry_points:
@@ -6,5 +6,5 @@ entry_points:
     parameters:
       data_path: {type: str, default: "diabetes_preprocessed_full.csv"}
       test_size: {type: float, default: 0.2}
-      random_state: {type: int, default: 42}
-    command: "python modelling.py --data-path {data_path} --test-size {test_size} --random-state {random_state}"
+      model_type: {type: str, default: "random_forest"}
+    command: "python modelling.py --data_file={data_file} --test_size={test_size} --model_type={model_type}"

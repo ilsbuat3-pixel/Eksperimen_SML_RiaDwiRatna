@@ -1,16 +1,22 @@
-name: MLflow CI/CD Pipeline
+name: MLflow CI/CD Training
 
 on:
   push:
     branches: [ main, master ]
+    paths:
+      - 'modelling.py'
+      - 'conda.yaml'
+      - 'MLproject'
+      - 'data/**'
+      - '.github/workflows/mlflow-ci.yml'
   pull_request:
     branches: [ main, master ]
   schedule:
-    - cron: '0 0 * * 0'  # Run weekly on Sunday
+    - cron: '0 0 * * 0'  # Weekly training
   workflow_dispatch:  # Manual trigger
 
 jobs:
-  train-model:
+  mlflow-training:
     runs-on: ubuntu-latest
     
     steps:
@@ -25,66 +31,85 @@ jobs:
     - name: Check Environment
       run: |
         python --version
-        pip --version
+        echo "Starting MLflow CI/CD Pipeline"
         
-    - name: Install dependencies
+    - name: Install Dependencies
       run: |
         pip install --upgrade pip
         pip install mlflow scikit-learn pandas numpy
-        if [ -f "MLProject/requirements.txt" ]; then
-          pip install -r MLProject/requirements.txt
+        if [ -f "requirements.txt" ]; then
+          pip install -r requirements.txt
         fi
         
-    - name: Run MLflow project
-      env:
-        MLFLOW_TRACKING_URI: file:///tmp/mlruns
+    - name: Run MLflow Project
+      id: run-mlflow
       run: |
-        cd MLProject
-        mlflow run . --experiment-name github-ci-experiment
+        echo "Running MLflow project..."
+        mlflow run . --experiment-name "ci-cd-training"
         
-    - name: Get latest MLflow run id
-      id: get-run-id
+    - name: Find Latest Run ID
+      id: find-run
       run: |
-        RUN_ID=$(mlflow runs list --experiment-id 0 | grep -o "run_id:'[^']*'" | head -1 | cut -d"'" -f2)
-        echo "RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
-        echo "Latest run ID: $RUN_ID"
+        if [ -d "mlruns" ]; then
+          # Cari run ID terbaru
+          RUN_ID=$(find mlruns -name "meta.yaml" -type f | xargs grep -h "run_id:" | cut -d' ' -f2 | head -1)
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "Latest run ID: $RUN_ID"
+        fi
         
-    - name: Save model artifacts to GitHub
+    - name: Upload Training Artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: mlflow-model
-        path: /tmp/mlruns/
+        name: mlflow-artifacts
+        path: |
+          mlruns/
+          *.pkl
+          *.json
+        retention-days: 30
         
-    - name: Build Docker Model
+    # --- SKILLED LEVEL ---
+    - name: Save Model to GitHub
+      if: success()
       run: |
-        cd MLProject
-        mlflow models build-docker -m "runs:/${{ steps.get-run-id.outputs.RUN_ID }}/model" -n mlflow-model-image
+        mkdir -p trained_models
+        # Cari model terbaru
+        if [ -d "mlruns" ]; then
+          MODEL_PATH=$(find mlruns -name "model.pkl" -o -name "*.joblib" | head -1)
+          if [ -n "$MODEL_PATH" ]; then
+            cp "$MODEL_PATH" "trained_models/model_${{ github.run_number }}.pkl"
+            echo "✅ Model saved"
+          fi
+        fi
         
-    - name: Log in to Docker Hub
+    # --- ADVANCED LEVEL ---
+    - name: Build Docker Image with MLflow
+      if: success() && github.event_name != 'pull_request'
+      id: build-docker
+      run: |
+        echo "Building Docker image..."
+        pip install mlflow[extras]
+        
+        # Build docker dari model MLflow
+        mlflow models build-docker \
+          -m "runs:/${{ steps.find-run.outputs.run_id }}/model" \
+          -n "mlflow-model-${{ github.sha:0:8 }}" \
+          --enable-mlserver
+        
+    - name: Login to Docker Hub
+      if: success() && github.event_name != 'pull_request'
       uses: docker/login-action@v2
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         
-    - name: Tag Docker Image
+    - name: Tag and Push Docker Image
+      if: success() && github.event_name != 'pull_request'
       run: |
-        docker tag mlflow-model-image:latest ${{ secrets.DOCKER_USERNAME }}/mlflow-model:${{ github.sha }}
-        docker tag mlflow-model-image:latest ${{ secrets.DOCKER_USERNAME }}/mlflow-model:latest
+        # Tag image
+        docker tag "mlflow-model-${{ github.sha:0:8 }}" "${{ secrets.DOCKER_USERNAME }}/mlflow-ci-model:${{ github.sha:0:8 }}"
+        docker tag "mlflow-model-${{ github.sha:0:8 }}" "${{ secrets.DOCKER_USERNAME }}/mlflow-ci-model:latest"
         
-    - name: Push Docker Image
-      run: |
-        docker push ${{ secrets.DOCKER_USERNAME }}/mlflow-model:${{ github.sha }}
-        docker push ${{ secrets.DOCKER_USERNAME }}/mlflow-model:latest
-        
-    - name: Upload Model to GitHub Releases (Optional)
-      if: success()
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          /tmp/mlruns/**/*.pkl
-          /tmp/mlruns/**/*.json
-        tag_name: model-v${{ github.run_number }}
-        
-    - name: Cleanup
-      run: |
-        docker logout
+        # Push ke Docker Hub
+        docker push "${{ secrets.DOCKER_USERNAME }}/mlflow-ci-model:${{ github.sha:0:8 }}"
+        docker push "${{ secrets.DOCKER_USERNAME }}/mlflow-ci-model:latest"
+        echo "✅ Docker image pushed to Docker Hub"
