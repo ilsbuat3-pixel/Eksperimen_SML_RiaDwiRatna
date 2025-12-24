@@ -1,239 +1,90 @@
-name: Advanced MLflow CI/CD - Diabetes Model
+name: MLflow CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
-
-env:
-  MLPROJECT_PATH: "MLProject"  # Path ke MLProject folder
-  DATASET_NAME: "diabetes_preprocessed_full.csv"
-  MODEL_NAME: "diabetes-classifier"
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday
+  workflow_dispatch:  # Manual trigger
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: 🔍 Check repository structure
-        run: |
-          echo "Repository structure:"
-          find . -type f -name "*.py" -o -name "*.csv" -o -name "*.yaml" | head -20
-          echo ""
-          echo "Looking for MLProject..."
-          find . -name "modelling.py" -o -name "MLproject" -o -name "*.csv" | sort
-          
-      - name: 🐍 Setup Python 3.12.7
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12.7'
-          
-      - name: 📦 Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install mlflow scikit-learn pandas numpy boto3 docker
-
   train-model:
     runs-on: ubuntu-latest
-    needs: setup
     
     steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python 3.12.7
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12.7'
         
-      - name: 🔍 Find MLProject location
-        id: find-mlproject
-        run: |
-          # Cari file MLproject atau modelling.py
-          if [ -f "MLProject/MLproject" ]; then
-            echo "MLPROJECT_DIR=MLProject" >> $GITHUB_OUTPUT
-          elif [ -f "Workflow-CI/MLProject/MLproject" ]; then
-            echo "MLPROJECT_DIR=Workflow-CI/MLProject" >> $GITHUB_OUTPUT
-          elif [ -f "MLproject" ]; then
-            echo "MLPROJECT_DIR=." >> $GITHUB_OUTPUT
-          else
-            # Cari secara rekursif
-            MLPROJECT_DIR=$(find . -name "MLproject" -type f | head -1 | xargs dirname)
-            if [ -n "$MLPROJECT_DIR" ]; then
-              echo "MLPROJECT_DIR=$MLPROJECT_DIR" >> $GITHUB_OUTPUT
-            else
-              echo "MLPROJECT_DIR=." >> $GITHUB_OUTPUT
-            fi
-          fi
-          echo "MLProject directory: $MLPROJECT_DIR"
-          
-      - name: 📁 Verify MLProject files
-        run: |
-          echo "MLProject Directory: ${{ steps.find-mlproject.outputs.MLPROJECT_DIR }}"
-          echo ""
-          echo "Files in MLProject:"
-          ls -la "${{ steps.find-mlproject.outputs.MLPROJECT_DIR }}/" || echo "Directory not found"
-          
-      - name: 🏃 Run MLflow Project
-        id: mlflow-run
-        run: |
-          cd "${{ steps.find-mlproject.outputs.MLPROJECT_DIR }}"
-          echo "Running MLflow from: $(pwd)"
-          echo "Files:"
-          ls -la
-          
-          # Jalankan MLflow
-          mlflow run . \
-            --experiment-name="diabetes-experiment" \
-            --entry-point main
-          
-          # Dapatkan run ID
-          if [ -d "mlruns" ]; then
-            LATEST_RUN=$(ls -t mlruns/0/ 2>/dev/null | head -1)
-            echo "run_id=$LATEST_RUN" >> $GITHUB_OUTPUT
-            echo "Run ID: $LATEST_RUN"
-          fi
-
-  build-docker:
-    runs-on: ubuntu-latest
-    needs: train-model
-    
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
+    - name: Check Environment
+      run: |
+        python --version
+        pip --version
         
-      - name: 🔍 Find MLProject directory
-        run: |
-          # Cari directory yang ada file MLproject
-          if [ -f "MLProject/MLproject" ]; then
-            echo "MLPROJECT_DIR=MLProject" >> $GITHUB_ENV
-          elif [ -f "Workflow-CI/MLProject/MLproject" ]; then
-            echo "MLPROJECT_DIR=Workflow-CI/MLProject" >> $GITHUB_ENV
-          else
-            MLPROJECT_DIR=$(find . -name "MLproject" -type f | head -1 | xargs dirname)
-            echo "MLPROJECT_DIR=${MLPROJECT_DIR:-.}" >> $GITHUB_ENV
-          fi
-          echo "Using MLProject dir: $MLPROJECT_DIR"
-          
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12.7'
-          
-      - name: 📦 Install MLflow
-        run: pip install mlflow docker
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install mlflow scikit-learn pandas numpy
+        if [ -f "MLProject/requirements.txt" ]; then
+          pip install -r MLProject/requirements.txt
+        fi
         
-      - name: 🐳 Build Docker Image
-        run: |
-          cd "$MLPROJECT_DIR"
-          echo "Building Docker from: $(pwd)"
-          
-          # Cari model terbaru
-          if [ -d "mlruns" ]; then
-            LATEST_RUN=$(ls -t mlruns/0/ 2>/dev/null | head -1)
-            MODEL_PATH="mlruns/0/$LATEST_RUN/artifacts/model"
-            
-            if [ -d "$MODEL_PATH" ]; then
-              echo "Building from model: $MODEL_PATH"
-              mlflow models build-docker \
-                -m "file://$(pwd)/$MODEL_PATH" \
-                -n "diabetes-model" \
-                --enable-mlserver
-            else
-              echo "Creating dummy model for testing..."
-              # Buat model dummy jika tidak ada
-              python -c "
-import mlflow
-import pickle
-from sklearn.ensemble import RandomForestClassifier
-import numpy as np
-
-X = np.random.rand(10, 5)
-y = np.random.randint(0, 2, 10)
-
-with mlflow.start_run():
-    model = RandomForestClassifier()
-    model.fit(X, y)
-    mlflow.sklearn.log_model(model, 'model')
-              "
-              
-              # Build dari model dummy
-              mlflow models build-docker \
-                -m "runs:/$(ls -t mlruns/0/ | head -1)/model" \
-                -n "diabetes-model" \
-                --enable-mlserver
-            fi
-          fi
-          
-      - name: 🔐 Login to Docker Hub
-        if: github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-          
-      - name: 🏷️ Tag and Push
-        if: github.ref == 'refs/heads/main'
-        run: |
-          docker tag diabetes-model:latest \
-            ${{ secrets.DOCKER_USERNAME }}/diabetes-model:latest
-          
-          docker tag diabetes-model:latest \
-            ${{ secrets.DOCKER_USERNAME }}/diabetes-model:${{ github.sha }}
-          
-          docker push ${{ secrets.DOCKER_USERNAME }}/diabetes-model:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/diabetes-model:${{ github.sha }}
-          
-          echo "✅ Pushed to Docker Hub"
-
-  upload-artifacts:
-    runs-on: ubuntu-latest
-    needs: train-model
-    
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
+    - name: Run MLflow project
+      env:
+        MLFLOW_TRACKING_URI: file:///tmp/mlruns
+      run: |
+        cd MLProject
+        mlflow run . --experiment-name github-ci-experiment
         
-      - name: 🔍 Find and package artifacts
-        run: |
-          # Cari mlruns directory
-          if [ -d "MLProject/mlruns" ]; then
-            echo "Found MLProject/mlruns"
-            cp -r MLProject/mlruns/ .
-          elif [ -d "Workflow-CI/MLProject/mlruns" ]; then
-            echo "Found Workflow-CI/MLProject/mlruns"
-            cp -r Workflow-CI/MLProject/mlruns/ .
-          else
-            echo "Searching for mlruns..."
-            find . -name "mlruns" -type d | head -5
-          fi
-          
-          mkdir -p artifacts
-          if [ -d "mlruns" ]; then
-            cp -r mlruns artifacts/
-          fi
-          
-      - name: 📤 Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mlflow-artifacts
-          path: artifacts/
-          
-  summary:
-    runs-on: ubuntu-latest
-    needs: [build-docker, upload-artifacts]
-    
-    steps:
-      - name: 🎉 Summary
-        run: |
-          echo "========================================"
-          echo "✅ ADVANCED MLflow CI/CD COMPLETED"
-          echo "========================================"
-          echo ""
-          echo "📊 All criteria met:"
-          echo "1. ✅ MLflow Project"
-          echo "2. ✅ Automatic training"
-          echo "3. ✅ Docker build with mlflow build-docker"
-          echo "4. ✅ Push to Docker Hub"
-          echo "5. ✅ Upload artifacts"
-          echo ""
-          echo "🐳 Docker Image: ${{ secrets.DOCKER_USERNAME }}/diabetes-model"
+    - name: Get latest MLflow run id
+      id: get-run-id
+      run: |
+        RUN_ID=$(mlflow runs list --experiment-id 0 | grep -o "run_id:'[^']*'" | head -1 | cut -d"'" -f2)
+        echo "RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
+        echo "Latest run ID: $RUN_ID"
+        
+    - name: Save model artifacts to GitHub
+      uses: actions/upload-artifact@v3
+      with:
+        name: mlflow-model
+        path: /tmp/mlruns/
+        
+    - name: Build Docker Model
+      run: |
+        cd MLProject
+        mlflow models build-docker -m "runs:/${{ steps.get-run-id.outputs.RUN_ID }}/model" -n mlflow-model-image
+        
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Tag Docker Image
+      run: |
+        docker tag mlflow-model-image:latest ${{ secrets.DOCKER_USERNAME }}/mlflow-model:${{ github.sha }}
+        docker tag mlflow-model-image:latest ${{ secrets.DOCKER_USERNAME }}/mlflow-model:latest
+        
+    - name: Push Docker Image
+      run: |
+        docker push ${{ secrets.DOCKER_USERNAME }}/mlflow-model:${{ github.sha }}
+        docker push ${{ secrets.DOCKER_USERNAME }}/mlflow-model:latest
+        
+    - name: Upload Model to GitHub Releases (Optional)
+      if: success()
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          /tmp/mlruns/**/*.pkl
+          /tmp/mlruns/**/*.json
+        tag_name: model-v${{ github.run_number }}
+        
+    - name: Cleanup
+      run: |
+        docker logout
